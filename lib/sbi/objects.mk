@@ -13,6 +13,8 @@ libsbi-objs-y += riscv_hardfp.o
 libsbi-objs-y += riscv_locks.o
 
 libsbi-objs-y += sbi_ecall.o
+carray-sbi_ecall_exts-$(CONFIG_PMP_VIRT_SEAL) += ecall_pvseal
+libsbi-objs-$(CONFIG_PMP_VIRT_SEAL) += sbi_ecall_pvseal.o
 libsbi-objs-y += sbi_ecall_exts.carray.o
 
 # The order of below extensions is performance optimized

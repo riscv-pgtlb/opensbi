@@ -40,9 +40,35 @@ void sbi_ecall_set_impid(unsigned long impid)
 
 static SBI_LIST_HEAD(ecall_exts_list);
 
+#ifdef CONFIG_PMP_VIRT_SEAL
+static bool pmp_virt_ecall_allowed(unsigned long extid)
+{
+	switch (extid) {
+	case SBI_EXT_BASE:
+	case SBI_EXT_TIME:
+	case SBI_EXT_IPI:
+	case SBI_EXT_RFENCE:
+	case SBI_EXT_SRST:
+	case SBI_EXT_0_1_SET_TIMER:
+	case SBI_EXT_0_1_CONSOLE_PUTCHAR:
+	case SBI_EXT_0_1_CONSOLE_GETCHAR:
+	case SBI_EXT_0_1_SHUTDOWN:
+	case 0x0a000056UL:
+		return true;
+	default:
+		return false;
+	}
+}
+#endif
+
 struct sbi_ecall_extension *sbi_ecall_find_extension(unsigned long extid)
 {
 	struct sbi_ecall_extension *t, *ret = NULL;
+
+#ifdef CONFIG_PMP_VIRT_SEAL
+	if (!pmp_virt_ecall_allowed(extid))
+		return NULL;
+#endif
 
 	sbi_list_for_each_entry(t, &ecall_exts_list, head) {
 		if (t->extid_start <= extid && extid <= t->extid_end) {

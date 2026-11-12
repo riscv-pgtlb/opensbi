@@ -24,6 +24,10 @@
 #include <sbi/sbi_trap.h>
 #include <sbi/sbi_hfence.h>
 
+#ifdef CONFIG_PMP_VIRT_SEAL
+extern void pmp_virt_seal_reapply(void);
+#endif
+
 extern void __sbi_expected_trap(void);
 extern void __sbi_expected_trap_hext(void);
 
@@ -472,6 +476,11 @@ static int sbi_hart_oldpmp_configure(struct sbi_scratch *scratch,
 	unsigned int pmp_idx = 0;
 	unsigned int pmp_flags;
 	unsigned long pmp_addr;
+	int rc;
+#ifdef CONFIG_PMP_VIRT_TRANSPORT_TEST
+	bool virt_verified = false;
+	unsigned long read_flags, read_addr, read_order;
+#endif
 
 	sbi_domain_for_each_memregion(dom, reg) {
 		if (pmp_count <= pmp_idx)
@@ -493,12 +502,44 @@ static int sbi_hart_oldpmp_configure(struct sbi_scratch *scratch,
 		if (reg->flags & SBI_DOMAIN_MEMREGION_SU_EXECUTABLE)
 			pmp_flags |= PMP_X;
 
+#ifdef CONFIG_PMP_VIRT_TRANSPORT_TEST
+		/*
+		 * Test transport only: retain the existing unlocked RWX policy.
+		 * Domain flags are NOT PMP bytes (domain bit 6 means ENF).
+		 * No domain flag or untrusted request can opt another region in.
+		 */
+		if (!reg->base && reg->order == __riscv_xlen &&
+		    !(reg->flags & (SBI_DOMAIN_MEMREGION_MMIO |
+				    SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS)) &&
+		    pmp_flags == (PMP_R | PMP_W | PMP_X))
+			pmp_flags |= PMP_VIRT;
+#endif
+
 		pmp_addr = reg->base >> PMP_SHIFT;
 		if (pmp_log2gran <= reg->order && pmp_addr < pmp_addr_max) {
 			sbi_platform_pmp_set(sbi_platform_ptr(scratch),
 					     pmp_idx, reg->flags, pmp_flags,
 					     reg->base, reg->order);
-			pmp_set(pmp_idx++, pmp_flags, reg->base, reg->order);
+			rc = pmp_set(pmp_idx, pmp_flags, reg->base, reg->order);
+			if (rc)
+				return rc;
+#ifdef CONFIG_PMP_VIRT_TRANSPORT_TEST
+			if (pmp_flags & PMP_VIRT) {
+				rc = pmp_get(pmp_idx, &read_flags, &read_addr,
+					     &read_order);
+				if (rc || read_flags != (pmp_flags | PMP_A_NAPOT) ||
+				    read_addr != reg->base || read_order != reg->order) {
+					sbi_printf("PMP.Virt transport FAIL: entry=%u rc=%d\n",
+						   pmp_idx, rc);
+					return SBI_EFAIL;
+				}
+				virt_verified = true;
+				sbi_printf("PMP.Virt transport PASS: entry=%u cfg=0x%lx "
+					   "base=0x%lx order=%lu (RWX; not sealed)\n",
+					   pmp_idx, read_flags, read_addr, read_order);
+			}
+#endif
+			pmp_idx++;
 		} else {
 			sbi_printf("Can not configure pmp for domain %s because"
 				   " memory region address 0x%lx or size 0x%lx "
@@ -507,6 +548,12 @@ static int sbi_hart_oldpmp_configure(struct sbi_scratch *scratch,
 		}
 	}
 
+#ifdef CONFIG_PMP_VIRT_TRANSPORT_TEST
+	if (!virt_verified) {
+		sbi_printf("PMP.Virt transport FAIL: no eligible RWX catch-all\n");
+		return SBI_EFAIL;
+	}
+#endif
 	return 0;
 }
 
@@ -564,6 +611,14 @@ int sbi_hart_pmp_configure(struct sbi_scratch *scratch)
 	unsigned int pmp_count = sbi_hart_pmp_count(scratch);
 	unsigned long pmp_addr_max;
 
+#ifdef CONFIG_PMP_VIRT_TRANSPORT_TEST
+	if (__riscv_xlen != 64 || !pmp_count ||
+	    sbi_hart_has_extension(scratch, SBI_HART_EXT_SMEPMP)) {
+		sbi_printf("PMP.Virt transport FAIL: requires RV64 PMP, no Smepmp\n");
+		return SBI_EFAIL;
+	}
+#endif
+
 	if (!pmp_count)
 		return 0;
 
@@ -577,6 +632,11 @@ int sbi_hart_pmp_configure(struct sbi_scratch *scratch)
 	else
 		rc = sbi_hart_oldpmp_configure(scratch, pmp_count,
 						pmp_log2gran, pmp_addr_max);
+
+#ifdef CONFIG_PMP_VIRT_SEAL
+	if (!rc)
+		pmp_virt_seal_reapply();
+#endif
 
 	/*
 	 * As per section 3.7.2 of privileged specification v1.12,

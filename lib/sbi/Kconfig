@@ -2,6 +2,21 @@
 
 menu "Generic SBI Support"
 
+config PMP_VIRT_SEAL
+	bool "Experimental fixed-layout single-hart PMP.Virt sealing"
+	default n
+
+
+config PMP_VIRT_TRANSPORT_TEST
+	bool "Experimental PMP.Virt RWX catch-all transport test"
+	default n
+	help
+	  Research test for QEMU virt with x-pmp-virt enabled, RV64, one hart,
+	  and Smepmp disabled. Attach the local PMP bit 6 to an existing
+	  unlocked RWX catch-all and verify pmp_set/pmp_get readback. This
+	  retains RWX, does not seal a protection policy, and does not detect
+	  hardware support. Never enable this as a production security policy.
+
 config CONSOLE_EARLY_BUFFER_SIZE
 	int "Early console buffer size (bytes)"
 	default 256
