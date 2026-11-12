@@ -54,8 +54,7 @@ static void apply_policy(void)
 	csr_write_num(CSR_PMPADDR0 + 8, PV_TEXT_LIMIT >> 2);
 	csr_write_num(CSR_PMPADDR0 + 9, PV_RO_START >> 2);
 	csr_write_num(CSR_PMPADDR0 + 10, PV_RO_LIMIT >> 2);
-	/* RAM: 0x80000000..0x8fffffff, naturally aligned 256 MiB. */
-	csr_write_num(CSR_PMPADDR0 + 11, (0x80000000UL >> 2) | 0x1ffffffUL);
+	csr_write_num(CSR_PMPADDR0 + 11, PV_RAM_NAPOT);
 	csr_write_num(CSR_PMPADDR0 + 12, ~0UL);
 	cfg_write(8, PMP_A_TOR | PMP_R | PMP_X);
 	cfg_write(10, PMP_A_TOR | PMP_R);
@@ -66,7 +65,7 @@ static void apply_policy(void)
 	    !entry_matches(8, 0x0d, PV_TEXT_LIMIT >> 2) ||
 	    !entry_matches(9, 0, PV_RO_START >> 2) ||
 	    !entry_matches(10, 0x09, PV_RO_LIMIT >> 2) ||
-	    !entry_matches(11, 0x5b, (0x80000000UL >> 2) | 0x1ffffffUL) ||
+	    !entry_matches(11, 0x5b, PV_RAM_NAPOT) ||
 	    !entry_matches(12, 0x1b, ~0UL))
 		fatal();
 	for (i = 13; i < 16; i++) {
@@ -103,7 +102,7 @@ static int preflight(void)
 		    (prot & (PMP_L | PMP_VIRT)) || order >= 63)
 			return SBI_EFAIL;
 		limit = base + (1UL << order);
-		if (base < 0x90000000UL && limit > 0x80200000UL)
+		if (base < PV_RAM_LIMIT && limit > 0x80200000UL)
 			return SBI_EFAIL;
 		/* Any region covering firmware must be inaccessible to S/U. */
 		if (base < 0x80200000UL && limit > 0x80000000UL &&

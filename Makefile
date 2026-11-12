@@ -356,6 +356,11 @@ GENFLAGS	+=	-Wno-unused-command-line-argument
 endif
 GENFLAGS	+=	-I$(platform_src_dir)/include
 GENFLAGS	+=	-I$(include_dir)
+
+# Keep generated PMP.Virt Image/layout data outside the source tree.
+ifneq ($(PMP_VIRT_LAYOUT_HEADER),)
+GENFLAGS	+=	-DPMP_VIRT_LAYOUT_HEADER=\"$(abspath $(PMP_VIRT_LAYOUT_HEADER))\"
+endif
 ifneq ($(OPENSBI_VERSION_GIT),)
 GENFLAGS	+=	-DOPENSBI_VERSION_GIT="\"$(OPENSBI_VERSION_GIT)\""
 endif
